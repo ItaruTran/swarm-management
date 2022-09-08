@@ -1,0 +1,5 @@
+acme-dns.json
+config/api-docs/htpasswd
+config/api-docs/config.json
+
+*.env
