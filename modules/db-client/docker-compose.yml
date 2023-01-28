@@ -1,0 +1,61 @@
+version: '3.8'
+
+services:
+  phpmyadmin:
+    image: phpmyadmin/phpmyadmin:5.1
+    environment:
+      - PMA_ARBITRARY=1
+    ports:
+      - 3333:80
+    deploy:
+      resources:
+        reservations:
+          cpus: '0.25'
+          memory: 50M
+        limits:
+          cpus: '1.5'
+          memory: 500M
+      restart_policy:
+        condition: on-failure
+        delay: 2s
+        max_attempts: 5
+        window: 120s
+      update_config:
+        parallelism: 1
+        delay: 1s
+        order: start-first
+        failure_action: rollback
+        monitor: 10s
+
+  pgadmin:
+    image: dpage/pgadmin4:latest
+    environment:
+      PGADMIN_DEFAULT_EMAIL: user@domain.com
+      PGADMIN_DEFAULT_PASSWORD: pass56789
+    ports:
+      - 8080:80
+    volumes:
+      - pgadmin-gfs:/var/lib/pgadmin
+    deploy:
+      resources:
+        reservations:
+          cpus: '0.25'
+          memory: 128M
+        limits:
+          cpus: '0.5'
+          memory: 256M
+      restart_policy:
+        condition: on-failure
+        delay: 2s
+        max_attempts: 5
+        window: 120s
+      update_config:
+        parallelism: 1
+        delay: 1s
+        order: start-first
+        failure_action: rollback
+        monitor: 10s
+
+volumes:
+  pgadmin-gfs:
+    driver: glusterfs

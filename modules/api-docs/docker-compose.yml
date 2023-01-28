@@ -1,0 +1,55 @@
+version: '3.8'
+
+services:
+  web:
+    image: ghcr.io/itarutran/swagger-custom:latest
+    networks:
+      - public-net
+    configs:
+      - source: auth
+        target: /app/conf.d/basic-auth.conf
+    secrets:
+      - source: spec-config
+        target: /app/setting/config.json
+      - source: htpasswd
+        target: /app/setting/.htpasswd
+    restart: on-failure:5
+    deploy:
+      labels:
+        # Enable Traefik for this service, to make it available in the public network
+        - traefik.enable=true
+        # Use the traefik-public network (declared below)
+        - traefik.docker.network=traefik_public
+        # Use the custom label "traefik.constraint-label=traefik-public"
+        # This public Traefik will only use services with this label
+        # That way you can add other internal Traefik instances per stack if needed
+        - traefik.constraint-label=traefik-public
+        # traefik-http set up only to use the middleware to redirect to https
+        # Uses the environment variable DOMAIN
+        - traefik.http.routers.api-docs-http.rule=Host(`api-docs.dev.yourdomain.com`)
+        - traefik.http.routers.api-docs-http.entrypoints=web
+        # traefik-https the actual router using HTTPS
+        # Uses the environment variable DOMAIN
+        - traefik.http.routers.api-docs-https.rule=Host(`api-docs.dev.yourdomain.com`)
+        - traefik.http.routers.api-docs-https.entrypoints=websecure
+        - traefik.http.routers.api-docs-https.tls=true
+        # Define the port inside of the Docker service to use
+        - traefik.http.services.api-docs.loadbalancer.server.port=80
+
+configs:
+  auth:
+    name: api-docs-auth
+    file: ./basic-auth.conf
+
+secrets:
+  spec-config:
+    name: api-docs-config
+    file: ./config.json
+  htpasswd:
+    name: api-docs-passwd
+    file: ./htpasswd
+
+networks:
+  public-net:
+    external: true
+    name: traefik_public

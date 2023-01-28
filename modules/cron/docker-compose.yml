@@ -1,0 +1,40 @@
+version: "3.8"
+services:
+  swarm-cronjob:
+    image: crazymax/swarm-cronjob:1.9.0
+    environment:
+      - "TZ=Asia/Ho_Chi_Minh"
+      - "LOG_LEVEL=info"
+      - "LOG_JSON=true"
+    volumes:
+      - /var/run/docker.sock:/var/run/docker.sock:ro
+    deploy:
+      placement:
+        constraints:
+          - node.role == manager
+      resources:
+        reservations:
+          cpus: '0.05'
+          memory: 32M
+        limits:
+          cpus: '0.5'
+          memory: 128M
+      restart_policy:
+        condition: on-failure
+        delay: 2s
+        max_attempts: 5
+        window: 120s
+
+  prune-nodes:
+    image: docker
+    command: ["docker", "image", "prune", "-f"]
+    volumes:
+      - "/var/run/docker.sock:/var/run/docker.sock:ro"
+    deploy:
+      mode: global
+      labels:
+        - "swarm.cronjob.enable=true"
+        - "swarm.cronjob.schedule=@weekly"
+        - "swarm.cronjob.skip-running=false"
+      restart_policy:
+        condition: none

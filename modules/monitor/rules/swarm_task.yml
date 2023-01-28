@@ -1,0 +1,28 @@
+groups:
+- name: swarm_task
+  rules:
+  - alert: task_high_cpu_usage
+    expr: avg_over_time(tasks_cpu_percentage[1m]) > 80
+    for: 3m
+    labels:
+      severity: warning
+    annotations:
+      description: '{{ $labels.prettyName }} CPU usage is at {{ humanize $value }}%.'
+      summary: CPU alert for Swarm task '{{ $labels.prettyName }}' greater than 80% in 3m
+  - alert: task_high_memory_usage
+    expr: avg_over_time(tasks_memory_percentage[1m]) > 80
+    for: 3m
+    labels:
+      severity: warning
+    annotations:
+      description: '{{ $labels.prettyName }} memory usage is {{ humanize $value }}.'
+      summary: Memory alert for Swarm task '{{ $labels.prettyName }}' greater than 80% in 3m
+
+  - alert: task_fail
+    expr: avg_over_time(tasks_fail[1m]) > 0 < 1
+    for: 1m
+    labels:
+      severity: error
+    annotations:
+      description: '{{ $labels.prettyName }} have error.'
+      summary: Alert for Swarm task '{{ $labels.prettyName }}' run fail

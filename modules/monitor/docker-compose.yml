@@ -1,0 +1,318 @@
+version: "3.8"
+
+networks:
+  net:
+  swarmpit:
+    external: true
+    name: manager_net
+  traefik:
+    external: true
+    name: proxy_metric
+
+volumes:
+  loki-data-gfs:
+    # driver: glusterfs
+  grafana-gfs:
+    # driver: glusterfs
+  prometheus-gfs:
+    # driver: glusterfs
+  # alertmanager:
+  #   driver: glusterfs
+  grafana-backup:
+    # driver: glusterfs
+  alertmanager:
+
+configs:
+  prometheus:
+    name: prometheus-conf
+    # external: true
+    file: ./config/prometheus.yml
+  loki_config:
+    name: loki_config
+    file: ./config/loki-local-config.yaml
+  grafana-config:
+    name: grafana-config
+    file: ./config/grafana.ini
+
+  grafana-db-log:
+    name: grafana-db-log
+    file: ./dashboard/log-viewer.json
+  grafana-db-prometheus:
+    name: grafana-db-prometheus
+    file: ./dashboard/prometheus.json
+  grafana-db-proxy:
+    name: grafana-db-proxy
+    file: ./dashboard/proxy.json
+  grafana-db-swarm:
+    name: grafana-db-swarm
+    file: ./dashboard/swarm.json
+  grafana-dashboard-config:
+    name: grafana-dashboard-config
+    file: ./dashboard/config.yml
+  grafana-datasources-config:
+    name: grafana-datasources-config
+    file: ./datasource/config.yml
+
+  node_rules:
+    file: ./rules/swarm_node.yml
+  task_rules:
+    file: ./rules/swarm_task.yml
+
+  alertmanager_config:
+    file: ./config/alertmanager.yml
+    name: alertmanager_config
+  # karma_conf:
+  #   file: ./config/karma.yaml
+  #   name: karma_conf
+
+services:
+  loki:
+    image: grafana/loki:2.7.0
+    user: loki
+    command: -config.file=/etc/loki/loki-local-config.yaml
+    configs:
+      - source: loki_config
+        target: /etc/loki/loki-local-config.yaml
+    volumes:
+      - loki-data-gfs:/loki
+    ports:
+      - 3100:3100
+    networks:
+      - net
+      - traefik
+    deploy:
+      mode: replicated
+      replicas: 1
+      resources:
+        limits:
+          cpus: '1.5'
+          memory: 4g
+        reservations:
+          cpus: '0.05'
+          memory: 128M
+      restart_policy:
+        condition: on-failure
+        delay: 2s
+        max_attempts: 5
+        window: 120s
+      update_config:
+        parallelism: 1
+        delay: 1s
+        order: start-first
+        failure_action: rollback
+        monitor: 10s
+      labels:
+        traefik.enable: 'true'
+        traefik.constraint-label: traefik-public
+        traefik.docker.network: proxy_metric
+        traefik.http.routers.loki-http.entrypoints: web
+        traefik.http.routers.loki-http.rule: Host(`${LOGGER_DOMAIN-logger.internal}`)
+        traefik.http.services.loki.loadbalancer.server.port: '3100'
+
+  # grafana-backup:
+  #   image: grafana/grafana:8.0.6
+  #   user: root
+  #   entrypoint: bash
+  #   command:
+  #     - -c
+  #     - |
+  #         set -eo pipefail
+  #         cd /var/lib/grafana
+  #         tar cvf /backup/backup-$$(date +%Y%m%d-%H%M%S).tar .
+  #         ls -lh /backup/
+
+  #         if (( $$(ls -1 /backup/ | wc -l) > 7 )); then
+  #           echo 'Delete old file'
+  #           find /backup/ -type f -mtime +7 -name '*.tar' -print -delete
+  #         fi
+  #   volumes:
+  #     - grafana-gfs:/var/lib/grafana:ro
+  #     - grafana-backup:/backup
+  #   networks:
+  #     - net
+  #   deploy:
+  #     replicas: 0
+  #     restart_policy:
+  #       condition: none
+  #     labels:
+  #       - "swarm.cronjob.enable=true"
+  #       - "swarm.cronjob.schedule=@daily"
+  #       - "swarm.cronjob.skip-running=true"
+
+  grafana:
+    # image: grafana/grafana:8.5.15
+    image: grafana/grafana:9.3.1
+    # image: grafana/grafana:8.0.6
+    user: grafana
+    volumes:
+      - grafana-gfs:/var/lib/grafana
+    # ports:
+    #   - 8300:3000
+    networks:
+      - net
+      - traefik
+    configs:
+      - source: grafana-config
+        target: /etc/grafana/grafana.ini
+      - source: grafana-db-log
+        target: /etc/grafana/provisioning/dashboards/Overview/log.json
+      - source: grafana-db-prometheus
+        target: /etc/grafana/provisioning/dashboards/Overview/prometheus.json
+      - source: grafana-db-proxy
+        target: /etc/grafana/provisioning/dashboards/Overview/proxy.json
+      - source: grafana-db-swarm
+        target: /etc/grafana/provisioning/dashboards/Overview/swarm.json
+      - source: grafana-dashboard-config
+        target: /etc/grafana/provisioning/dashboards/config.yml
+      - source: grafana-datasources-config
+        target: /etc/grafana/provisioning/datasources/config.yml
+    logging:
+      driver: loki
+      options:
+        loki-url: http://${LOGGER_DOMAIN-logger.internal}/loki/api/v1/push
+        keep-file: 'true'
+        max-size: 20m
+        max-file: 15
+    healthcheck:
+      test: "wget -q -Y off -O /dev/null http://localhost:3000/login > /dev/null 2>&1"
+      interval: 25s
+      timeout: 3s
+      start_period: 120s
+    deploy:
+      mode: replicated
+      replicas: 1
+      resources:
+        limits:
+          cpus: '0.75'
+          memory: 1024M
+        reservations:
+          cpus: '0.05'
+          memory: 128M
+      update_config:
+        parallelism: 1
+        delay: 1s
+        order: start-first
+        failure_action: rollback
+        monitor: 10s
+      restart_policy:
+        condition: on-failure
+        delay: 2s
+        max_attempts: 5
+        window: 120s
+      labels:
+        traefik.enable: 'true'
+        traefik.constraint-label: traefik-public
+        traefik.docker.network: proxy_metric
+        traefik.http.routers.grafana-http.entrypoints: web
+        # traefik.http.routers.grafana-http.middlewares: https-redirect
+        traefik.http.routers.grafana-http.rule: Host(`${MONITOR_DOMAIN-monitor.internal}`)
+        # traefik.http.routers.grafana-https.rule: Host(`monitor.internal`)
+        # traefik.http.routers.grafana-https.tls: 'true'
+        # traefik.http.routers.grafana-https.tls.certresolver: le
+        # traefik.http.routers.grafana-https.entrypoints: websecure
+        traefik.http.services.grafana.loadbalancer.server.port: '3000'
+
+  prometheus:
+    image: prom/prometheus:v2.26.0
+    user: root
+    # ports:
+    #   - 9090:9090
+    networks:
+      - net
+      - traefik
+      - swarmpit
+    volumes:
+      - prometheus-gfs:/prometheus
+      - /var/run/docker.sock:/var/run/docker.sock:ro
+    configs:
+      - source: prometheus
+        target: /etc/prometheus/prometheus.yml
+      - source: node_rules
+        target: /etc/prometheus/swarm_node.yml
+      - source: task_rules
+        target: /etc/prometheus/swarm_task.yml
+    deploy:
+      mode: replicated
+      replicas: 1
+      resources:
+        limits:
+          cpus: '0.50'
+          memory: 1024M
+        reservations:
+          cpus: '0.05'
+          memory: 128M
+      restart_policy:
+        condition: on-failure
+        delay: 2s
+        max_attempts: 5
+        window: 120s
+
+  alertmanager:
+    image: prom/alertmanager:v0.25.0
+    # ports:
+    #   - 9993:9093
+    command:
+      - '--config.file=/etc/alertmanager/alertmanager.yml'
+      - '--storage.path=/alertmanager'
+    configs:
+      - source: alertmanager_config
+        target: /etc/alertmanager/alertmanager.yml
+    deploy:
+      mode: replicated
+      replicas: 1
+      update_config:
+        parallelism: 1
+        delay: 2s
+        order: start-first
+        failure_action: rollback
+        monitor: 5s
+      restart_policy:
+        condition: on-failure
+        delay: 2s
+        max_attempts: 5
+        window: 120s
+      resources:
+        limits:
+          cpus: '0.5'
+          memory: 500M
+        reservations:
+          cpus: '0.01'
+          memory: 50M
+    healthcheck:
+      test: "/bin/wget -q -Y off http://localhost:9093/metrics -O /dev/null > /dev/null 2>&1"
+      interval: 25s
+      timeout: 3s
+      start_period: 30s
+    networks:
+      - net
+    volumes:
+      - alertmanager:/alertmanager
+
+  # karma:
+  #   image: lmierzwa/karma:v0.88
+  #   configs:
+  #     - source: karma_conf
+  #       target: /karma.yaml
+  #   deploy:
+  #     mode: replicated
+  #     replicas: 1
+  #     update_config:
+  #       parallelism: 1
+  #       delay: 2s
+  #       order: start-first
+  #       failure_action: rollback
+  #       monitor: 5s
+  #     restart_policy:
+  #       condition: on-failure
+  #       delay: 2s
+  #       max_attempts: 5
+  #       window: 120s
+  #     resources:
+  #       limits:
+  #         cpus: '0.5'
+  #         memory: 500M
+  #       reservations:
+  #         cpus: '0.01'
+  #         memory: 50M
+  #   networks:
+  #     - net

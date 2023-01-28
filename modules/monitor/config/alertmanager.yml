@@ -1,0 +1,22 @@
+global:
+  resolve_timeout: 30s
+
+  #slack_api_url: <url>#
+
+  smtp_smarthost: 'smtp.example.com:587'
+  smtp_from: 'system@example.com'
+  smtp_auth_username: 'system'
+  smtp_auth_password: 'xxxxxxx'
+
+route:
+    receiver: 'group-1'
+
+receivers:
+  - name: 'group-1'
+    email_configs:
+      - to: 'reciever@example.com'
+    # slack_configs:
+    #   - send_resolved: true
+    #     text: "{{ .CommonAnnotations.description }}"
+    #     #username: <user>#
+    #     #channel: <channel>#

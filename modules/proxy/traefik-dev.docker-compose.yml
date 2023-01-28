@@ -1,0 +1,83 @@
+version: '3.8'
+
+secrets:
+  acme-dns:
+    name: dev-acme-dns
+    file: acme-dns.json
+
+services:
+  traefik:
+    image: traefik:v2.9
+    command:
+     - --providers.docker
+     - --providers.docker.constraints=Label(`traefik.constraint-label`, `traefik-public`)
+     - --providers.docker.exposedbydefault=false
+     - --providers.docker.swarmmode
+     - --entrypoints.web.address=:80
+     - --entrypoints.websecure.address=:443
+     - --certificatesresolvers.le.acme.email=support@domain.com
+     - --certificatesresolvers.le.acme.storage=/certificates/acme.json
+     - --certificatesresolvers.le.acme.tlschallenge=true
+     - --certificatesresolvers.dns.acme.email=support@domain.com
+     - --certificatesresolvers.dns.acme.storage=/acme-dns.json
+     - --certificatesresolvers.dns.acme.dnschallenge=true
+     - --certificatesresolvers.dns.acme.dnschallenge.provider=manual
+     - --certificatesresolvers.dns.acme.dnschallenge.delaybeforecheck=0
+     - --certificatesresolvers.dns.acme.dnschallenge.resolvers=1.1.1.1:53,8.8.8.8:53
+     - --accesslog
+     - --accesslog.format=json
+     - --log
+     - --api
+     - --metrics.prometheus
+     - --ping=true
+    healthcheck:
+      test:
+       - CMD-SHELL
+       - wget http://localhost:8080/ping -q -O -
+      interval: 30s
+      timeout: 10s
+      retries: 5
+    secrets:
+      - source: acme-dns
+        target: /acme-dns.json
+        mode: 0400
+    ports:
+     - 80:80
+     - 443:443
+    volumes:
+     - /var/run/docker.sock:/var/run/docker.sock:ro
+     - traefik-public-certificates:/certificates
+    networks:
+     - public
+    logging:
+      driver: loki:latest
+      options:
+        loki-url: http://localhost:3100/loki/api/v1/push
+    deploy:
+      labels:
+        traefik.http.middlewares.https-redirect.redirectscheme.scheme: https
+        traefik.http.middlewares.admin-auth.basicauth.users: swarm-admin:${HASHED_PASSWORD?Missing password}
+        traefik.http.services.traefik-public.loadbalancer.server.port: '8080'
+        traefik.http.routers.traefik-public-http.middlewares: admin-auth
+        traefik.http.routers.traefik-public-http.entrypoints: web
+        traefik.http.middlewares.https-redirect.redirectscheme.permanent: 'true'
+        traefik.constraint-label: traefik-public
+        traefik.http.routers.traefik-public-http.rule: Host(`${PROXY_DOMAIN-domain.internal}`)
+        traefik.docker.network: traefik_public
+        traefik.enable: 'true'
+        traefik.http.routers.traefik-public-http.service: api@internal
+      update_config:
+        delay: 1s
+        order: start-first
+        failure_action: rollback
+      restart_policy:
+        condition: on-failure
+        delay: 1s
+        window: 120s
+        max_attempts: 5
+
+networks:
+  public:
+
+volumes:
+  traefik-public-certificates:

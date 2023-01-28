@@ -1,0 +1,35 @@
+version: '3.8'
+
+services:
+  web:
+    image: 'gitlab/gitlab-ce:13.12.0-ce.0'
+    restart: on-failure:5
+    ports:
+      - 80:80
+      - '2224:2224'
+    environment:
+      GITLAB_OMNIBUS_CONFIG: |
+        external_url 'https://gitlab.${DOMAIN_NAME?missing domain}'
+        registry_external_url "https://registry.${DOMAIN_NAME?missing domain}"
+        mattermost_external_url "https://mattermost.${DOMAIN_NAME?missing domain}"
+
+        # Add any other gitlab.rb configuration here, each on its own line
+        # gitlab_rails['initial_root_password'] = File.read('/etc/gitlab/gitlab_root_password.txt')
+        gitlab_rails['gitlab_shell_ssh_port'] = 2224
+        gitlab_rails['lfs_enabled'] = true
+        letsencrypt['contact_emails'] = ['${EMAIL?missing emai}']
+
+    volumes:
+      - '$GITLAB_HOME/config:/etc/gitlab'
+      - '$GITLAB_HOME/logs:/var/log/gitlab'
+      - '$GITLAB_HOME/data:/var/opt/gitlab'
+
+  # runner:
+  #   image: gitlab/gitlab-runner:alpine
+  #   restart: on-failure:5
+  #   depends_on:
+  #     - web
+  #   volumes:
+  #     - $GITLAB_HOME/gitlab-runner:/etc/gitlab-runner
+  #     - /var/run/docker.sock:/var/run/docker.sock
+

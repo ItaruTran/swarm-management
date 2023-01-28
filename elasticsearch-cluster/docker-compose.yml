@@ -1,0 +1,52 @@
+version: "3.8"
+
+configs:
+  entrypoint:
+    name: es-entrypoint
+    file: ./entrypoint.sh
+
+services:
+  es:
+    image: docker.elastic.co/elasticsearch/elasticsearch:8.6.0
+    user: elasticsearch
+    # ports:
+    #   - 9200:9200
+    configs:
+      - source: entrypoint
+        target: /entrypoint.sh
+        mode: 0555
+    entrypoint: bash
+    command: /entrypoint.sh
+    environment:
+      SLOT: '{{.Task.Slot}}'
+      SERVICE_NAME: '{{.Service.Name}}'
+      NODE_COUNT: '3'
+
+      cluster.name: es-cluster
+      node.roles: data,master
+      bootstrap.memory_lock: "true"
+      ES_JAVA_OPTS: -Xms128m -Xmx128m
+    volumes:
+      - "es-data:/usr/share/elasticsearch/data"
+    ulimits:
+      memlock:
+        soft: -1
+        hard: -1
+    deploy:
+      mode: replicated
+      replicas: 3
+      # restart_policy:
+      #   condition: none
+        # condition: on-failure
+        # delay: 1s
+        # max_attempts: 5
+        # window: 120s
+      update_config:
+        parallelism: 1
+        delay: 2s
+        order: stop-first
+        failure_action: rollback
+        monitor: 5s
+
+volumes:
+  es-data:

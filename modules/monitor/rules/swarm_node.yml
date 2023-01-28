@@ -1,0 +1,56 @@
+groups:
+- name: swarm_node
+  rules:
+  - alert: node_cpu_usage
+    expr: avg_over_time(nodes_cpu_percentage[1m]) > 80
+    for: 3m
+    labels:
+      severity: warning
+    annotations:
+      description: Swarm node {{ $labels.nodeName }} CPU usage is at {{ humanize $value }}%.
+      summary: CPU alert for Swarm node '{{ $labels.nodeName }}'
+  - alert: node_memory_usage
+    expr: avg_over_time(nodes_memory_percentage[1m]) > 80
+    for: 3m
+    labels:
+      severity: warning
+    annotations:
+      description: Swarm node {{ $labels.nodeName }} memory usage is at {{ humanize $value }}%.
+      summary: Memory alert for Swarm node '{{ $labels.nodeName }}'
+
+  - alert: node_disk_usage
+    expr: nodes_disk_percentage > 80
+    for: 1m
+    labels:
+      severity: warning
+    annotations:
+      description: Swarm node {{ $labels.nodeName }} disk usage is at {{ humanize $value }}%.
+      summary: Disk alert for Swarm node '{{ $labels.nodeName }}'
+  # - alert: node_disk_fill_rate_6h
+  #   expr: predict_linear(node_filesystem_free_bytes{mountpoint="/rootfs"}[1h], 6 * 3600) * ON(instance)
+  #     GROUP_LEFT(node_name) node_meta < 0
+  #   for: 1h
+  #   labels:
+  #     severity: critical
+  #   annotations:
+  #     description: Swarm node {{ $labels.node_name }} disk is going to fill up in
+  #       6h.
+  #     summary: Disk fill alert for Swarm node '{{ $labels.node_name }}'
+
+  - alert: nodes_state
+    expr: avg_over_time(nodes_state[1m]) > 0 < 1
+    for: 1m
+    labels:
+      severity: critical
+    annotations:
+      description: '{{ $labels.nodeName }} have error.'
+      summary: Alert for Swarm node '{{ $labels.nodeName }}' have error
+
+  - alert: exporter_latest_data
+    expr: avg_over_time(stats_collector_time[1m]) > 90000
+    for: 1m
+    labels:
+      severity: critical
+    annotations:
+      description: Fail to get new data from swarmpit
+      summary: Stats collector can't collect data

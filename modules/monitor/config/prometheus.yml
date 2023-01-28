@@ -1,0 +1,74 @@
+global:
+  scrape_interval:     15s # Set the scrape interval to every 15 seconds. Default is every 1 minute.
+  evaluation_interval: 15s # Evaluate rules every 15 seconds. The default is every 1 minute.
+  # scrape_timeout is set to the global default (10s).
+
+  # Attach these labels to any time series or alerts when communicating with
+  # external systems (federation, remote storage, Alertmanager).
+  external_labels:
+      monitor: 'codelab-monitor'
+
+# Load rules once and periodically evaluate them according to the global 'evaluation_interval'.
+rule_files:
+  - "swarm_node.yml"
+  - "swarm_task.yml"
+
+alerting:
+  alertmanagers:
+  - static_configs:
+    - targets:
+      - alertmanager:9093
+
+# A scrape configuration containing exactly one endpoint to scrape:
+# Here it's Prometheus itself.
+scrape_configs:
+  # The job name is added as a label `job=<job_name>` to any timeseries scraped from this config.
+  - job_name: 'prometheus'
+
+    # metrics_path defaults to '/metrics'
+    # scheme defaults to 'http'.
+
+    static_configs:
+      - targets: ['localhost:9090']
+
+  # Create a job for Docker daemons.
+  # - job_name: 'docker'
+  #   dockerswarm_sd_configs:
+  #     - host: unix:///var/run/docker.sock
+  #       role: nodes
+  #   relabel_configs:
+  #     # Fetch metrics on port 9323.
+  #     - source_labels: [__meta_dockerswarm_node_manager_address]
+  #       regex: '^(.*):\d*$'
+  #       target_label: __address__
+  #       replacement: $1:9323
+  #     # Set hostname as instance label
+  #     - source_labels: [__meta_dockerswarm_node_hostname]
+  #       target_label: instance
+
+  # - job_name: 'dockerswarm'
+  #   dockerswarm_sd_configs:
+  #     - host: unix:///var/run/docker.sock # You can also use http/https to connect to the Docker daemon.
+  #       role: tasks
+  #   relabel_configs:
+  #     # Only keep containers that should be running.
+  #     - source_labels: [__meta_dockerswarm_task_desired_state]
+  #       regex: running
+  #       action: keep
+      # # Only keep containers that have a `prometheus-job` label.
+      # - source_labels: [__meta_dockerswarm_service_label_prometheus_job]
+      #   regex: .+
+      #   action: keep
+      # # Use the task labels that are prefixed by `prometheus-`.
+      # - regex: __meta_dockerswarm_service_label_prometheus_(.+)
+      #   action: labelmap
+      #   replacement: $1
+
+  - job_name: traefik
+    static_configs:
+      - targets: ['traefik:8080']
+
+  - job_name: swarm_exporter
+    scrape_interval: 5s
+    static_configs:
+      - targets: ['exporter:3000']

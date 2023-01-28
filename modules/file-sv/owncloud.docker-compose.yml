@@ -1,0 +1,193 @@
+version: "3.8"
+
+volumes:
+  files-gfs:
+    driver: glusterfs
+  mysql:
+  redis:
+  backup:
+    driver: glusterfs
+
+services:
+  owncloud:
+    image: owncloud/server:10.7
+    # user: www-data
+    depends_on:
+      - mariadb
+      - redis
+    environment:
+      - OWNCLOUD_DOMAIN=storage.yourdomain.com
+
+      - OWNCLOUD_DB_TYPE=mysql
+      - OWNCLOUD_DB_NAME=owncloud
+      - OWNCLOUD_DB_USERNAME=owncloud
+      - OWNCLOUD_DB_PASSWORD=${ADMIN_PASSWORD? Missing admin password}
+      - OWNCLOUD_DB_HOST=mariadb
+
+      - OWNCLOUD_ADMIN_USERNAME=admin
+      - OWNCLOUD_ADMIN_PASSWORD=${ADMIN_PASSWORD}
+
+      - OWNCLOUD_MYSQL_UTF8MB4=true
+      - OWNCLOUD_REDIS_ENABLED=true
+      - OWNCLOUD_REDIS_HOST=redis
+    healthcheck:
+      test: ["CMD", "/usr/bin/healthcheck"]
+      interval: 30s
+      timeout: 10s
+      retries: 5
+    volumes:
+      - files-gfs:/mnt/data
+    networks:
+      - db-net
+      - public-net
+    deploy:
+      mode: replicated
+      replicas: 1
+      update_config:
+        parallelism: 1
+        delay: 1s
+        # order: stop-first
+        failure_action: rollback
+        monitor: 10s
+      restart_policy:
+        condition: on-failure
+        delay: 1s
+        max_attempts: 5
+        window: 120s
+      resources:
+        limits:
+          cpus: '1.0'
+          memory: 1024M
+        reservations:
+          cpus: '0.05'
+          memory: 250M
+      labels:
+        - server.type=app
+        # Enable Traefik for this service, to make it available in the public network
+        - traefik.enable=true
+        # Use the traefik-public network (declared below)
+        - traefik.docker.network=traefik_public
+        # Use the custom label "traefik.constraint-label=traefik-public"
+        # This public Traefik will only use services with this label
+        # That way you can add other internal Traefik instances per stack if needed
+        - traefik.constraint-label=traefik-public
+        # traefik-http set up only to use the middleware to redirect to https
+        # Uses the environment variable DOMAIN
+        - traefik.http.routers.owncloud-http.rule=Host(`storage.yourdomain.com`)
+        - traefik.http.routers.owncloud-http.entrypoints=web
+        - traefik.http.routers.owncloud-http.middlewares=https-redirect
+        # traefik-https the actual router using HTTPS
+        # Uses the environment variable DOMAIN
+        - traefik.http.routers.owncloud-https.rule=Host(`storage.yourdomain.com`)
+        - traefik.http.routers.owncloud-https.entrypoints=websecure
+        - traefik.http.routers.owncloud-https.tls=true
+        # Use the "le" (Let's Encrypt) resolver created below
+        - traefik.http.routers.owncloud-https.tls.certresolver=le
+        # Define the port inside of the Docker service to use
+        - traefik.http.services.owncloud.loadbalancer.server.port=8080
+
+  mariadb:
+    image: mariadb:10.5
+    environment:
+      - MYSQL_ROOT_PASSWORD=${ADMIN_PASSWORD}
+      - MYSQL_USER=owncloud
+      - MYSQL_PASSWORD=${ADMIN_PASSWORD}
+      - MYSQL_DATABASE=owncloud
+    command: ["--max-allowed-packet=128M", "--innodb-log-file-size=64M"]
+    healthcheck:
+      test: ["CMD", "mysqladmin", "ping", "-u", "root", "--password=${ADMIN_PASSWORD}"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+    volumes:
+      - mysql:/var/lib/mysql
+    networks:
+      - db-net
+    deploy:
+      restart_policy:
+        condition: on-failure
+        delay: 1s
+        max_attempts: 5
+        window: 120s
+      resources:
+        limits:
+          cpus: '1.0'
+          memory: 1024M
+        reservations:
+          cpus: '0.1'
+          memory: 512M
+      placement:
+        constraints:
+          - node.labels.name==db
+      labels:
+        server.type: db
+
+  mariadb-dump:
+    image: mariadb:10.5
+    command:
+      - bash
+      - -c
+      - |
+          set -eo pipefail
+          cd /var/lib/mysql
+          mysqldump -v -h mariadb -u root --password=${ADMIN_PASSWORD} --all-databases | gzip -9 > /backup/backup-$$(date +%Y%m%d-%H%M%S).sql.gz
+          ls -lh /backup/
+
+          if (( $$(ls -1 /backup/ | wc -l) > 7 )); then
+            echo 'Delete old file'
+            find /backup/ -type f -mtime +7 -name '*.sql.gz' -print -delete
+          fi
+    volumes:
+      - mysql:/var/lib/mysql:ro
+      - backup:/backup
+    networks:
+      - db-net
+    deploy:
+      replicas: 0
+      restart_policy:
+        condition: none
+      placement:
+        constraints:
+          - node.labels.name==db
+      labels:
+        - "swarm.cronjob.enable=true"
+        - "swarm.cronjob.schedule=@daily"
+        - "swarm.cronjob.skip-running=true"
+
+  redis:
+    image: redis:6
+    restart: always
+    command: ["--databases", "1"]
+    healthcheck:
+      test: ["CMD", "redis-cli", "ping"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+    volumes:
+      - redis:/data
+    networks:
+      - db-net
+    deploy:
+      restart_policy:
+        condition: on-failure
+        delay: 1s
+        max_attempts: 5
+        window: 120s
+      resources:
+        limits:
+          cpus: '1.0'
+          memory: 512M
+        reservations:
+          cpus: '0.05'
+          memory: 64M
+      placement:
+        constraints:
+          - node.labels.name==media
+      labels:
+        server.type: redis
+
+networks:
+  db-net:
+  public-net:
+    external: true
+    name: traefik_public

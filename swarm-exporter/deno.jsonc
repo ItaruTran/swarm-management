@@ -1,0 +1,40 @@
+{
+  "compilerOptions": {
+    "lib": [
+      "deno.window",
+      "deno.unstable"
+    ],
+    "strict": true
+  },
+  "lint": {
+    "files": {
+    },
+    "rules": {
+      "tags": [
+        "recommended"
+      ],
+      "include": [
+        "ban-untagged-todo"
+      ],
+      "exclude": [
+        "no-explicit-any"
+      ]
+    }
+  },
+  "fmt": {
+    "files": {
+      "include": [
+        "server/"
+      ],
+      "exclude": [
+      ]
+    },
+    "options": {
+      "useTabs": false,
+      "lineWidth": 80,
+      "indentWidth": 2,
+      "singleQuote": true,
+      "proseWrap": "preserve"
+    }
+  }
+}

@@ -1,0 +1,143 @@
+version: '3.8'
+
+services:
+  traefik:
+    image: traefik:v2.9
+    ports:
+      # Listen on port 80, default for HTTP, necessary to redirect to HTTPS
+      - 80:80
+      # Listen on port 443, default for HTTPS
+      - 443:443
+    volumes:
+      # Add Docker as a mounted volume, so that Traefik can read the labels of other services
+      - /var/run/docker.sock:/var/run/docker.sock:ro
+      # Mount the volume to store the certificates
+      - traefik-public-certificates:/certificates
+      # - /root/ssl/:/certs:ro
+    networks:
+      # Use the public network created to be shared between Traefik and
+      # any other service that needs to be publicly available with HTTPS
+      - public
+      - metric
+    # configs:
+    #   # - source: config
+    #   #   target: /etc/traefik/traefik.yml
+    #   - source: certs
+    #     target: /certs.yml
+    logging:
+      driver: loki
+      options:
+        loki-url: http://${LOGGER_DOMAIN-logger.internal}/loki/api/v1/push
+        keep-file: 'true'
+        max-size: 20m
+        max-file: 15
+    healthcheck:
+      test: wget http://localhost:8080/ping -q -O -
+      interval: 30s
+      timeout: 10s
+      retries: 5
+    command:
+      # Enable Docker in Traefik, so that it reads labels from Docker services
+      - --providers.docker
+      # Add a constraint to only use services with the label "traefik.constraint-label=traefik-public"
+      - --providers.docker.constraints=Label(`traefik.constraint-label`, `traefik-public`)
+      # Do not expose all Docker services, only the ones explicitly exposed
+      - --providers.docker.exposedbydefault=false
+      # Enable Docker Swarm mode
+      - --providers.docker.swarmmode
+      # Config file
+      # - --providers.file.filename=/certs.yml
+      # Create an entrypoint "http" listening on port 80
+      - --entrypoints.web.address=:80
+      # Create an entrypoint "https" listening on port 443
+      - --entrypoints.websecure.address=:443
+      # Create the certificate resolver "le" for Let's Encrypt, uses the environment variable EMAIL
+      - --certificatesresolvers.le.acme.email=support@domain.com
+      # Store the Let's Encrypt certificates in the mounted volume
+      - --certificatesresolvers.le.acme.storage=/certificates/acme.json
+      # Use the TLS Challenge for Let's Encrypt
+      - --certificatesresolvers.le.acme.tlschallenge=true
+      # Create the certificate resolver "lehttp" for Let's Encrypt, uses the environment variable EMAIL
+      - --certificatesresolvers.dns.acme.email=support@domain.com
+      # Store the Let's Encrypt certificates in the mounted volume
+      - --certificatesresolvers.dns.acme.storage=/certificates/acme-dns.json
+      # Use the DNS Challenge for Let's Encrypt
+      - --certificatesresolvers.dns.acme.dnschallenge=true
+      - --certificatesresolvers.dns.acme.dnschallenge.provider=manual
+      - --certificatesresolvers.dns.acme.dnschallenge.delaybeforecheck=0
+      - --certificatesresolvers.dns.acme.dnschallenge.resolvers=1.1.1.1:53,8.8.8.8:53
+      # Enable the access log, with HTTP requests
+      - --accesslog
+      - --accesslog.format=json
+      # Enable the Traefik log, for configurations and errors
+      - --log
+      # Enable the Dashboard and API
+      - --api
+      # Enable metrics
+      - --metrics.prometheus
+      - --ping=true
+    deploy:
+      mode: replicated
+      replicas: 1
+      update_config:
+        parallelism: 1
+        delay: 1s
+        order: start-first
+        failure_action: rollback
+        monitor: 10s
+      restart_policy:
+        condition: on-failure
+        delay: 1s
+        max_attempts: 5
+        window: 120s
+      resources:
+        limits:
+          cpus: '1.5'
+          memory: 500M
+        reservations:
+          cpus: '0.25'
+          memory: 64M
+      labels:
+        # Enable Traefik for this service, to make it available in the public network
+        - traefik.enable=true
+        # Use the traefik-public network (declared below)
+        - traefik.docker.network=traefik_public
+        # Use the custom label "traefik.constraint-label=traefik-public"
+        # This public Traefik will only use services with this label
+        # That way you can add other internal Traefik instances per stack if needed
+        - traefik.constraint-label=traefik-public
+        # admin-auth middleware with HTTP Basic auth
+        # Using the environment variables USERNAME and HASHED_PASSWORD
+        - traefik.http.middlewares.admin-auth.basicauth.users=swarm-admin:${HASHED_PASSWORD?Missing password}
+        # https-redirect middleware to redirect HTTP to HTTPS
+        # It can be re-used by other stacks in other Docker Compose files
+        - traefik.http.middlewares.https-redirect.redirectscheme.scheme=https
+        - traefik.http.middlewares.https-redirect.redirectscheme.permanent=true
+        # traefik-http set up only to use the middleware to redirect to https
+        # Uses the environment variable DOMAIN
+        - traefik.http.routers.traefik-public-http.rule=Host(`${PROXY_DOMAIN-domain.internal}`)
+        - traefik.http.routers.traefik-public-http.entrypoints=web
+        # Use the special Traefik service api@internal with the web UI/Dashboard
+        - traefik.http.routers.traefik-public-http.service=api@internal
+        # Enable HTTP Basic auth, using the middleware created above
+        - traefik.http.routers.traefik-public-http.middlewares=admin-auth
+        # Define the port inside of the Docker service to use
+        - traefik.http.services.traefik-public.loadbalancer.server.port=8080
+
+volumes:
+  # Create a volume to store the certificates, there is a constraint to make sure
+  # Traefik is always deployed to the same Docker node with the same volume containing
+  # the HTTPS certificates
+  traefik-public-certificates:
+
+# configs:
+#   # config:
+#   #   file: ./traefik.yml
+#   certs:
+#     file: ./certs.yml
+
+networks:
+  # Use the previously created public network "traefik-public", shared with other
+  # services that need to be publicly available via this Traefik
+  public:
+  metric:

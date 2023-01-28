@@ -1,0 +1,45 @@
+version: "3.8"
+
+configs:
+  entrypoint:
+    name: redis-entrypoint
+    file: ./boot.sh
+
+services:
+  redis:
+    image: redis:6.2
+    user: redis
+    volumes:
+      - redisdb:/data
+    # ports:
+    #   - 6370:6379
+    environment:
+      NODE_COUNT: '6'
+      REDIS_REPLICAS: '1'
+    configs:
+      - source: entrypoint
+        target: /entrypoint.sh
+        mode: 0555
+    entrypoint: bash
+    command: /entrypoint.sh
+    # env_file:
+    #   - ${ENV_FILE?Missing env file config}
+    healthcheck:
+      test: ["CMD", "redis-cli", "ping"]
+      interval: 30s
+      timeout: 10s
+      retries: 5
+    deploy:
+      mode: replicated
+      replicas: 6
+      restart_policy:
+        condition: on-failure
+      update_config:
+        parallelism: 1
+        delay: 2s
+        order: stop-first
+        failure_action: rollback
+        monitor: 5s
+
+volumes:
+  redisdb:

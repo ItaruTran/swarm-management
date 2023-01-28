@@ -1,0 +1,21 @@
+apiVersion: 1
+
+datasources:
+  - type: prometheus
+    name: Prometheus
+    uid: ralNfUFVk
+    access: proxy
+    url: http://prometheus:9090
+
+  - type: loki
+    name: Loki
+    uid: P8E80F9AEF21F6940
+    access: proxy
+    url: http://loki:3100
+
+  - uid: qKucHZ2Vz
+    name: Alertmanager
+    type: alertmanager
+    access: proxy
+    url: http://alertmanager:9093
+    jsonData:

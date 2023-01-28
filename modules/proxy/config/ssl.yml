@@ -1,0 +1,11 @@
+
+http:
+  routers:
+    my-router:
+      rule: "Path(`/foo`)"
+      service: api@internal
+      tls:
+        certResolver: dns
+        domains:
+          - main: "*.dev.yourdomain.com"
+          - main: "*.staging.yourdomain.com"
