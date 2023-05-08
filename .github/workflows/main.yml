@@ -27,10 +27,10 @@ jobs:
       # Checks-out your repository under $GITHUB_WORKSPACE, so your job can access it
       - uses: actions/checkout@v2
 
-      # - name: Set up QEMU
-      #   uses: docker/setup-qemu-action@v2
-      # - name: Set up Docker Buildx
-      #   uses: docker/setup-buildx-action@v2
+      - name: Set up QEMU
+        uses: docker/setup-qemu-action@v2
+      - name: Set up Docker Buildx
+        uses: docker/setup-buildx-action@v2
 
       - name: Cache Docker layers
         uses: actions/cache@v3
@@ -53,8 +53,8 @@ jobs:
         with:
           context: ./swarm-exporter
           file: ./Dockerfile
-          # builder: ${{ steps.buildx.outputs.name }}
-          # platforms: linux/arm64,linux/amd64
+          builder: ${{ steps.buildx.outputs.name }}
+          platforms: linux/arm64,linux/amd64
           push: true
           tags: ghcr.io/${{ env.REPO }}:latest
           cache-from: type=local,src=/tmp/.buildx-cache
