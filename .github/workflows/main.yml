@@ -53,7 +53,7 @@ jobs:
         with:
           context: ./swarm-exporter
           file: ./Dockerfile
-          builder: ${{ steps.buildx.outputs.name }}
+          # builder: ${{ steps.buildx.outputs.name }}
           # platforms: linux/arm64,linux/amd64
           push: true
           tags: ghcr.io/${{ env.REPO }}:latest
