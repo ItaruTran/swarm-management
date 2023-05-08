@@ -27,6 +27,21 @@ jobs:
       # Checks-out your repository under $GITHUB_WORKSPACE, so your job can access it
       - uses: actions/checkout@v2
 
+      -
+        name: Docker meta
+        id: meta
+        uses: docker/metadata-action@v4
+        with:
+          # list of Docker images to use as base name for tags
+          images: |
+            ghcr.io/${{ env.REPO }}/swarm-exporter
+          # generate Docker tags based on the following events/attributes
+          tags: |
+            type=semver,pattern={{version}}
+            type=semver,pattern={{major}}.{{minor}}
+            type=semver,pattern={{major}}
+            type=sha
+
       - name: Set up QEMU
         uses: docker/setup-qemu-action@v2
       - name: Set up Docker Buildx
@@ -56,7 +71,9 @@ jobs:
           builder: ${{ steps.buildx.outputs.name }}
           platforms: linux/arm64,linux/amd64
           push: true
-          tags: ghcr.io/${{ env.REPO }}:latest
           cache-from: type=local,src=/tmp/.buildx-cache
           cache-to: type=local,dest=/tmp/.buildx-cache
-          labels: org.opencontainers.image.source=https://github.com/${{ github.repository }}
+          # tags: ghcr.io/${{ env.REPO }}/swarm-exporter:latest
+          # labels: org.opencontainers.image.source=https://github.com/${{ github.repository }}
+          tags: ${{ steps.meta.outputs.tags }}
+          labels: ${{ steps.meta.outputs.labels }}
