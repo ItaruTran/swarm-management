@@ -52,7 +52,7 @@ jobs:
         uses: docker/build-push-action@v3
         with:
           context: ./swarm-exporter
-          file: ./Dockerfile
+          file: ./swarm-exporter/Dockerfile
           builder: ${{ steps.buildx.outputs.name }}
           platforms: linux/arm64,linux/amd64
           push: true
