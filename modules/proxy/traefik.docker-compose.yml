@@ -24,13 +24,13 @@ services:
     #   #   target: /etc/traefik/traefik.yml
     #   - source: certs
     #     target: /certs.yml
-    logging:
-      driver: loki
-      options:
-        loki-url: http://${LOGGER_DOMAIN-logger.internal}/loki/api/v1/push
-        keep-file: 'true'
-        max-size: 20m
-        max-file: 15
+    # logging:
+    #   driver: loki
+    #   options:
+    #     loki-url: http://${LOGGER_DOMAIN-logger.internal}/loki/api/v1/push
+    #     keep-file: 'true'
+    #     max-size: 20m
+    #     max-file: 15
     healthcheck:
       test: wget http://localhost:8080/ping -q -O -
       interval: 30s
